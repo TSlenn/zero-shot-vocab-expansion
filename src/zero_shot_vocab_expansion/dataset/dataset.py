@@ -1,7 +1,5 @@
 from torch.utils.data import Dataset
 import random
-from tqdm.contrib.concurrent import thread_map
-import multiprocessing as mp
 from .utils import get_definitions
 
 
@@ -10,9 +8,7 @@ class VocabDataset(Dataset):
         self.embeddings = model.embeddings.word_embeddings.weight.detach()
         self.token_map = tokenizer.vocab
         words = list(self.token_map.keys())
-        definitions = thread_map(
-            get_definitions, words, max_workers=mp.cpu_count()
-        )
+        definitions = [get_definitions(word) for word in words]
         self.definitions = {
             word: defs for word, defs in zip(words, definitions)
             if len(defs) > 0
