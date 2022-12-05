@@ -4,6 +4,7 @@ from transformers import AutoModel, AutoTokenizer
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from sentence_transformers import SentenceTransformer
+from sentence_transformers.readers import InputExample
 from typing import Union
 from .utils import get_definitions
 
@@ -14,7 +15,8 @@ class VocabDataset(Dataset):
         self,
         model: Union[str, PreTrainedModel, SentenceTransformer],
         tokenizer: PreTrainedTokenizerBase = None,
-        definitions: dict = {}
+        definitions: dict = {},
+        select_definition: str = "best"
     ):
         """Finds model vocab and corresponding word definitions.
 
@@ -33,7 +35,17 @@ class VocabDataset(Dataset):
             definitions (dict): Dictionary of user provided word definitions.
                 These are prioritized over wordnet definitions.
                 {"word": ["definition1", "definition2"]}
+            select_definition (str): "best" or "random. If "best", the top
+                definition will be used. If "random", definition will be
+                randomly selected from available definitions.
+
         """
+        if model == "rosebud":
+            # hacky secret code to skip the init steps
+            return
+        msg = "select_definition must be one of ['best', 'random']"
+        assert select_definition in ["best", "random"], msg
+        self.select_definition = select_definition
         # get transformers model, tokenizer
         if isinstance(model, str):
             mod = AutoModel.from_pretrained(model)
@@ -67,9 +79,42 @@ class VocabDataset(Dataset):
     def __getitem__(self, idx):
         word = self.words[idx]
         definitions = self.definitions[word]
+        if self.select_definition == "best":
+            definition = definitions[0]
+        elif self.select_definition == "random":
+            definition = random.choice(definitions)
         embedding = self.embeddings[self.token_map[word]]
-        return {
-            "word": word,
-            "definition": random.choice(definitions),
-            "target": embedding
-        }
+        return InputExample(guid=word, texts=[definition], label=embedding)
+
+
+def split_dataset(ds: VocabDataset, split: float, shuffle: bool = True):
+    """Splits VocabDataset into two parts for train and val.
+
+    Args:
+        ds (VocabDataset): VocabDataset object.
+        split (float): Between 0 and 1. Split ratio between the primary
+            and secondary dataset.
+
+    """
+    ds1 = VocabDataset("rosebud")
+    ds2 = VocabDataset("rosebud")
+
+    # split up words
+    words = ds.words.copy()
+    if shuffle:
+        random.shuffle(words)
+    n_1 = int(len(words)*split)
+    ds1.words = words[:n_1]
+    ds2.words = words[n_1:]
+
+    # copy all other attributes
+    ds1.select_definition = ds.select_definition
+    ds1.embeddings = ds.embeddings
+    ds1.token_map = ds.token_map
+    ds1.definitions = ds.definitions
+    ds2.select_definition = ds.select_definition
+    ds2.embeddings = ds.embeddings
+    ds2.token_map = ds.token_map
+    ds2.definitions = ds.definitions
+
+    return ds1, ds2

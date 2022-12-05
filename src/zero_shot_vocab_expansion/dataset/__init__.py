@@ -1,1 +1,1 @@
-from .dataset import VocabDataset
+from .dataset import VocabDataset, split_dataset
