@@ -1,6 +1,14 @@
 ## Initial Setup
 
+setup.cfg contains all of the required pip packages and will automatically install them
+when you pip install this repository. If you intend to use GPU
+for training, you should manually install pytorch first to ensure you get the
+version that is compatible with your CUDA version. This repo alse uses "wordnet"
+to look up word definitions, which requires some nltk downloads after the pip
+installations are completed. The below example uses CUDA 11.6.
+
 ```
+pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
 pip install .
 python -c "import nltk;nltk.download('wordnet')"
 python -c "import nltk;nltk.download('omw-1.4')"
