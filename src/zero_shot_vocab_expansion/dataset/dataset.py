@@ -1,4 +1,5 @@
 import json
+import numpy as np
 from pathlib import Path
 import random
 from torch.utils.data import Dataset
@@ -6,10 +7,10 @@ from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-from sentence_transformers import SentenceTransformer
-from sentence_transformers.readers import InputExample
+from sentence_transformers import SentenceTransformer, InputExample
 from typing import Union
 from .utils import get_definitions
+from ..evaluation import MSEDefinitionEvaluator
 
 
 class VocabDataset(Dataset):
@@ -92,7 +93,7 @@ class VocabDataset(Dataset):
             definition = definitions[0]
         elif self.select_definition == "random":
             definition = random.choice(definitions)
-        embedding = self.embeddings[self.token_map[word]]
+        embedding = self.embeddings[self.token_map[word]].tolist()
         return InputExample(guid=word, texts=[definition], label=embedding)
 
     def save(self, filepath):
@@ -118,6 +119,18 @@ class VocabDataset(Dataset):
         self.token_map = load_dict["token_map"]
         self.definitions = load_dict["definitions"]
         self.words = load_dict["words"]
+
+    def to_evaluator(self, name="", write_csv: bool = False):
+        definitions = list()
+        embeddings = list()
+        for word in self.words:
+            definitions.append(self.definitions[word])
+            embeddings.append(self.embeddings[self.token_map[word]].numpy())
+        embeddings = np.stack(embeddings)
+        evaluator = MSEDefinitionEvaluator(
+            definitions, embeddings, name, write_csv
+        )
+        return evaluator
 
 
 def split_dataset(ds: VocabDataset, split: float, shuffle: bool = True):
