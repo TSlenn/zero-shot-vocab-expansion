@@ -1,7 +1,6 @@
 from zero_shot_vocab_expansion.dataset import VocabDataset, split_dataset
 from transformers import AutoModel, AutoTokenizer
 from sentence_transformers import SentenceTransformer
-from torch import Tensor
 from math import isclose
 
 
@@ -13,7 +12,9 @@ def test_VocabDataset_transformers():
     output = ds[0]
     assert isinstance(output.guid, str)
     assert isinstance(output.texts[0], str)
-    assert isinstance(output.label, Tensor)
+    assert isinstance(output.label, list)
+    # confirm method works
+    _ = ds.to_evaluator()
 
 
 def test_VocabDataset_str():
@@ -22,7 +23,7 @@ def test_VocabDataset_str():
     output = ds[0]
     assert isinstance(output.guid, str)
     assert isinstance(output.texts[0], str)
-    assert isinstance(output.label, Tensor)
+    assert isinstance(output.label, list)
 
 
 def test_VocabDataset_ST():
@@ -32,7 +33,7 @@ def test_VocabDataset_ST():
     output = ds[0]
     assert isinstance(output.guid, str)
     assert isinstance(output.texts[0], str)
-    assert isinstance(output.label, Tensor)
+    assert isinstance(output.label, list)
 
 
 def test_VocabDataset_custom_defs():
@@ -50,7 +51,7 @@ def test_split_dataset():
     outputy = y[0]
     assert isinstance(outputx.guid, str)
     assert isinstance(outputx.texts[0], str)
-    assert isinstance(outputx.label, Tensor)
+    assert isinstance(outputx.label, list)
     assert isinstance(outputy.guid, str)
     assert isinstance(outputy.texts[0], str)
-    assert isinstance(outputy.label, Tensor)
+    assert isinstance(outputy.label, list)
