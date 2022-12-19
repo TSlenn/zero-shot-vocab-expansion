@@ -7,7 +7,7 @@ from math import isclose
 def test_VocabDataset_transformers():
     model = AutoModel.from_pretrained("bert-base-uncased")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    ds = VocabDataset(model, tokenizer)
+    ds = VocabDataset.from_model(model, tokenizer)
     assert len(ds) > 0
     output = ds[0]
     assert isinstance(output.guid, str)
@@ -16,9 +16,20 @@ def test_VocabDataset_transformers():
     # confirm method works
     _ = ds.to_evaluator()
 
+    # Check that we can initialize with a config
+    ds2 = VocabDataset.from_config(ds.get_config())
+    ds2.words = ds2.words[:10]
+    assert len(ds2) == 10
+    # Ensure original dataset was not altered
+    assert len(ds) > 10
+    output = ds2[0]
+    assert isinstance(output.guid, str)
+    assert isinstance(output.texts[0], str)
+    assert isinstance(output.label, list)
+
 
 def test_VocabDataset_str():
-    ds = VocabDataset("bert-base-uncased")
+    ds = VocabDataset.from_model("bert-base-uncased")
     assert len(ds) > 0
     output = ds[0]
     assert isinstance(output.guid, str)
@@ -28,7 +39,7 @@ def test_VocabDataset_str():
 
 def test_VocabDataset_ST():
     model = SentenceTransformer("bert-base-uncased")
-    ds = VocabDataset(model)
+    ds = VocabDataset.from_model(model)
     assert len(ds) > 0
     output = ds[0]
     assert isinstance(output.guid, str)
@@ -38,12 +49,24 @@ def test_VocabDataset_ST():
 
 def test_VocabDataset_custom_defs():
     defs = {"test": ["hello world"]}
-    ds = VocabDataset("bert-base-uncased", definitions=defs)
+    ds = VocabDataset.from_model("bert-base-uncased", definitions=defs)
     assert ds.definitions["test"][0] == "hello world"
 
 
+def test_VocabDataset_from_list():
+    words = ["apple", "banana", "cranberry"]
+    definitions = {
+        "apple": ["test definition"]
+    }
+    ds = VocabDataset.from_list(words, definitions)
+    assert len(ds) == 3
+    output = ds[0]
+    assert isinstance(output.guid, str)
+    assert isinstance(output.texts[0], str)
+
+
 def test_split_dataset():
-    ds = VocabDataset("bert-base-uncased")
+    ds = VocabDataset.from_model("bert-base-uncased")
     x, y = split_dataset(ds, 0.5)
     assert isclose(len(x) / len(y), 1, abs_tol=0.05)
     # confirm that the individual datasets work
