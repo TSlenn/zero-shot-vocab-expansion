@@ -75,7 +75,7 @@ class VocabDataset(Dataset):
     @classmethod
     def from_model(
         cls,
-        model: Union[str, PreTrainedModel, SentenceTransformer] = None,
+        model: Union[str, PreTrainedModel, SentenceTransformer],
         tokenizer: PreTrainedTokenizerBase = None,
         definitions: dict = {},
         select_definition: str = "best",
