@@ -13,23 +13,74 @@ from .utils import get_definitions
 from ..evaluation import MSEDefinitionEvaluator
 
 
+def _update_definitions(words: list, definitions: dict):
+    """Update fn for VocabDataset."""
+    definitions = [
+        definitions[word] if word in definitions else get_definitions(word)
+        for word in words
+    ]
+    # Remove words with no definitions.
+    definitions = {
+        word: defs for word, defs in zip(words, definitions)
+        if len(defs) > 0
+    }
+    words = list(definitions.keys())
+    return words, definitions
+
+
 class VocabDataset(Dataset):
-    """Dataset of word definitions and corresponding embeddings."""
-    def __init__(
-        self,
-        model: Union[str, PreTrainedModel, SentenceTransformer] = None,
+    """Dataset of word definitions and corresponding embeddings.
+
+    VocabDataset extracts vocabulary from a transformers tokenizer or
+    SentenceTransformer, and matches them with a target embedding from
+    a transformers model or SentenceTransformer backbone model. Word
+    definitions are discovered using nltk wordnet synsets, or user provided
+    definitions.
+
+    VocabDataset can be initilized with:
+        - VocabDataset(config_dict)
+        - VocabDataset.from_config(config_dict)
+        - VocabDataset.from_model(model_name or model object)
+        - VocabDataset.load("path/to/config.json")
+        - VocabDataset.from_list(list_of_words)
+
+    Attributes:
+        select_definition (str): Selection method used in __getitem__.
+            Valid options: ["random", "best"].
+        embeddings (Tensor): Token embeddings.
+        token_map (dict): Dictionary of {word: int} that maps words to the
+            correct embedding index.
+        definitions (dict): Dictionary of {word: List[definitions]}
+        words (list): Words used to construct the dataset.
+
+    """
+    def __init__(self, config: dict):
+        """Initializes dataset from config dict."""
+        if config["embeddings"] is not None:
+            embeddings = Tensor(config["embeddings"])
+        else:
+            embeddings = None
+        self.select_definition = config["select_definition"]
+        self.embeddings = embeddings
+        self.token_map = config["token_map"]
+        self.definitions = config["definitions"]
+        self.words = config["words"]
+
+    @classmethod
+    def from_config(cls, config: dict):
+        """Initializes from config dictionary."""
+        # Default constructor, included alias so .from_config works.
+        return cls(config)
+
+    @classmethod
+    def from_model(
+        cls,
+        model: Union[str, PreTrainedModel, SentenceTransformer],
         tokenizer: PreTrainedTokenizerBase = None,
         definitions: dict = {},
         select_definition: str = "best",
-        load_path: str = None
     ):
         """Finds model vocab and corresponding word definitions.
-
-        VocabDataset extracts vocabulary from a transformers tokenizer or
-        SentenceTransformer, and matches them with a target embedding from
-        a transformers model or SentenceTransformer backbone model. Word
-        definitions are discovered using nltk wordnet synsets, or user provided
-        definitions.
 
         Args:
             model (str, PreTrainedModel, SentenceTransformer): Pretrained
@@ -43,19 +94,10 @@ class VocabDataset(Dataset):
             select_definition (str): "best" or "random. If "best", the top
                 definition will be used. If "random", definition will be
                 randomly selected from available definitions.
-            load_path (str): If provided, all other args will be ignored and
-                the dataset object will be loaded from the provided path.
 
         """
-        if load_path is not None:
-            self.load(load_path)
-            return
-        if model == "rosebud":
-            # hacky secret code to skip the init steps
-            return
         msg = "select_definition must be one of ['best', 'random']"
         assert select_definition in ["best", "random"], msg
-        self.select_definition = select_definition
         # get transformers model, tokenizer
         if isinstance(model, str):
             mod = AutoModel.from_pretrained(model)
@@ -70,18 +112,55 @@ class VocabDataset(Dataset):
             mod = model._first_module().auto_model
 
         # get word definitions and target embeddings
-        self.embeddings = mod.embeddings.word_embeddings.weight.detach()
-        self.token_map = tokenizer.vocab
-        words = list(self.token_map.keys())
-        definitions = [
-            definitions[word] if word in definitions else get_definitions(word)
-            for word in words
-        ]
-        self.definitions = {
-            word: defs for word, defs in zip(words, definitions)
-            if len(defs) > 0
+        words = list(tokenizer.vocab.keys())
+        words, definitions = _update_definitions(words, definitions)
+        config = {
+            "select_definition": select_definition,
+            "embeddings": mod.embeddings.word_embeddings.weight.detach(),
+            "token_map": tokenizer.vocab,
+            "words": words,
+            "definitions": definitions
         }
-        self.words = list(self.definitions.keys())
+
+        return cls(config)
+
+    @classmethod
+    def load(cls, filepath: str):
+        """Loads dataset object attributes from save file."""
+        filepath = Path(filepath).with_suffix(".json")
+        with open(filepath, "r") as f:
+            load_dict = json.load(f)
+        return cls(load_dict)
+
+    @classmethod
+    def from_list(
+        cls,
+        words: list,
+        definitions: dict,
+        select_definition: str = "best",
+    ):
+        """Initializes unsupervised dataset from a list of words.
+
+        Args:
+            words (list of str): List of words that will be paired with
+                definitions.
+            definitions (dict): Dictionary of user provided word definitions.
+                These are prioritized over wordnet definitions.
+                {"word": ["definition1", "definition2"]}
+            select_definition (str): "best" or "random. If "best", the top
+                definition will be used. If "random", definition will be
+                randomly selected from available definitions.
+
+        """
+        words, definitions = _update_definitions(words, definitions)
+        config = {
+            "select_definition": select_definition,
+            "embeddings": None,
+            "token_map": None,
+            "words": words,
+            "definitions": definitions
+        }
+        return cls(config)
 
     def __len__(self):
         return len(self.words)
@@ -93,32 +172,27 @@ class VocabDataset(Dataset):
             definition = definitions[0]
         elif self.select_definition == "random":
             definition = random.choice(definitions)
-        embedding = self.embeddings[self.token_map[word]].tolist()
+        if self.embeddings is not None:
+            embedding = self.embeddings[self.token_map[word]].tolist()
+        else:
+            embedding = None
         return InputExample(guid=word, texts=[definition], label=embedding)
+
+    def get_config(self):
+        return {
+            "select_definition": self.select_definition,
+            "embeddings": self.embeddings.tolist().copy(),
+            "token_map": self.token_map.copy(),
+            "definitions": self.definitions.copy(),
+            "words": self.words.copy()
+        }
 
     def save(self, filepath):
         """Saves dataset attributes to directory."""
         filepath = Path(filepath).with_suffix(".json")
-        save_dict = {
-            "select_definition": self.select_definition,
-            "embeddings": self.embeddings.tolist(),
-            "token_map": self.token_map,
-            "definitions": self.definitions,
-            "words": self.words
-        }
+        save_dict = self.get_config()
         with open(filepath, "w") as f:
             json.dump(save_dict, f)
-
-    def load(self, filepath):
-        """Loads dataset object attributes from save file."""
-        filepath = Path(filepath).with_suffix(".json")
-        with open(filepath, "r") as f:
-            load_dict = json.load(f)
-        self.select_definition = load_dict["select_definition"]
-        self.embeddings = Tensor(load_dict["embeddings"])
-        self.token_map = load_dict["token_map"]
-        self.definitions = load_dict["definitions"]
-        self.words = load_dict["words"]
 
     def to_evaluator(self, name="", write_csv: bool = False):
         definitions = list()
@@ -142,25 +216,16 @@ def split_dataset(ds: VocabDataset, split: float, shuffle: bool = True):
             and secondary dataset.
 
     """
-    ds1 = VocabDataset("rosebud")
-    ds2 = VocabDataset("rosebud")
+    config = ds.get_config()
+    ds1 = VocabDataset.from_config(config)
+    ds2 = VocabDataset.from_config(config)
 
     # split up words
-    words = ds.words.copy()
+    words = config["words"]
     if shuffle:
         random.shuffle(words)
     n_1 = int(len(words)*split)
     ds1.words = words[:n_1]
     ds2.words = words[n_1:]
-
-    # copy all other attributes
-    ds1.select_definition = ds.select_definition
-    ds1.embeddings = ds.embeddings
-    ds1.token_map = ds.token_map
-    ds1.definitions = ds.definitions
-    ds2.select_definition = ds.select_definition
-    ds2.embeddings = ds.embeddings
-    ds2.token_map = ds.token_map
-    ds2.definitions = ds.definitions
 
     return ds1, ds2
