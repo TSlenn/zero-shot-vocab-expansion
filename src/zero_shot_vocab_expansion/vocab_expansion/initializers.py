@@ -1,5 +1,7 @@
 import numpy as np
 import warnings
+from ..embedding_model import EmbeddingModel
+from ..dataset import VocabDataset
 
 
 def get_distribution_params(weights: np.ndarray):
@@ -39,3 +41,22 @@ def random_initializer(embeddings: np.ndarray, n: int):
         mu, cov=1e-5*sigma, size=n
     )
     return new_embeddings
+
+
+def model_initializer(model: EmbeddingModel, words: list, definitions: dict):
+    """Finds definitions and applies pretrained EmbeddingModel.
+
+    Args:
+        model (EmbeddingModel): Model trained to process definitions into
+            embedding vectors.
+        words (list of str): New vocabulary to process through model.
+        definitions (dict): User provided word definitions.
+
+    Returns:
+        dict: {str: Tensor} of output embeddings.
+
+    """
+    ds = VocabDataset.from_list(words, definitions)
+    ds_dict = {x.guid: x.texts[0] for x in ds}
+    embeddings = model.encode(list(ds_dict.values()))
+    return {word: emb for word, emb in zip(ds_dict.keys(), embeddings)}

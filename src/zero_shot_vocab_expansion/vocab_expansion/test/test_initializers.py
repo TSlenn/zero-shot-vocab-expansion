@@ -1,14 +1,16 @@
 from zero_shot_vocab_expansion.vocab_expansion.initializers import (
     get_distribution_params,
-    random_initializer
+    random_initializer,
+    model_initializer
 )
 import numpy as np
-from transformers import AutoModel
+from zero_shot_vocab_expansion.embedding_model import EmbeddingModel
+
 
 # Get embeddings from an existing model
 MODEL_NAME = "bert-base-uncased"
-MODEL = AutoModel.from_pretrained(MODEL_NAME)
-EMBEDDINGS = MODEL.embeddings.word_embeddings.weight.detach()
+MODEL = EmbeddingModel(MODEL_NAME)
+EMBEDDINGS = MODEL._first_module().auto_model.embeddings.word_embeddings.weight.detach() # noqa
 
 
 def test_get_distribution_params():
@@ -25,3 +27,14 @@ def test_random_initializer():
     new_embeddings = random_initializer(EMBEDDINGS.numpy(), 10)
     assert new_embeddings.shape[0] == 10
     assert new_embeddings.shape[1] == EMBEDDINGS.shape[1]
+
+
+def test_model_initializer():
+    words = ["barbecue", "chips", "penguin", "marsupial",
+             "kerbonaut", "blackberry", "askldfjadjl"]
+    definitions = {
+        "kerbonaut": ["a cartoon astronaut from the game Kerbal Space Program"]
+    }
+    embeddings = model_initializer(MODEL, words, definitions)
+    assert len(embeddings) == 6
+    assert embeddings["barbecue"].shape[0] == 768
