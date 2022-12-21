@@ -5,7 +5,7 @@ class EmbeddingModel(SentenceTransformer):
     def __init__(
         self,
         backbone_model: str,
-        max_seq_length: int = 256,
+        max_seq_length: int = 512,
         dense_layers: int = 3,
         freeze_backbone: bool = False
     ):
