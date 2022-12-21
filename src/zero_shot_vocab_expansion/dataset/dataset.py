@@ -194,7 +194,7 @@ class VocabDataset(Dataset):
         with open(filepath, "w") as f:
             json.dump(save_dict, f)
 
-    def to_evaluator(self, name="", write_csv: bool = False):
+    def to_evaluator(self, name="", write_csv: bool = True):
         definitions = list()
         embeddings = list()
         for word in self.words:
